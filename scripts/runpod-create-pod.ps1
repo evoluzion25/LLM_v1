@@ -13,7 +13,9 @@ param(
   [int]$VllmMaxContext = 32768,
   [string]$HfToken = "",
   [string]$NetworkVolumeId = "",
-  [string]$VolumeMountPath = "/workspace"
+  [string]$VolumeMountPath = "/workspace",
+  [switch]$EnableSsh,
+  [string]$SshPublicKey = ""
 )
 
 $ErrorActionPreference = 'Stop'
@@ -45,26 +47,50 @@ query GpuTypes { gpuTypes { id displayName memoryInGb } }
 
 $gpuTypeId = Get-GpuTypeId -ApiKey $RunpodApiKey -Query $GpuQuery
 
-# Presets
+$allowedCuda = @()
+if ($CudaVersions) { $allowedCuda = $CudaVersions.Split(',') | ForEach-Object { $_.Trim() } }
+
+# Defaults
+$ports = @()
+$env = @{}
+$dockerStartCmd = @()
+$imageName = ''
+
 switch ($Preset) {
   'vllm-openai' {
     $imageName = 'vllm/vllm-openai:latest'
-    $ports = @('8000/http')
-    $dockerStartCmd = @('python','-m','vllm.entrypoints.openai.api_server','--model', $VllmModel,'--port','8000','--max-model-len',"$VllmMaxContext")
-    $env = @{}
+    $ports += '8000/http'
     if ($HfToken) { $env['HUGGING_FACE_HUB_TOKEN'] = $HfToken }
+    if ($EnableSsh) {
+      $ports += '22/tcp'
+      if (-not $SshPublicKey) { $SshPublicKey = $env:RUNPOD_SSH_PUBKEY }
+      if ($SshPublicKey) { $env['SSH_PUBKEY'] = $SshPublicKey }
+      $dockerStartCmd = @(
+        'bash','-lc',
+        ("set -euo pipefail; " +
+         "apt-get update && apt-get install -y openssh-server; " +
+         "mkdir -p /var/run/sshd /root/.ssh; " +
+         "if [ -n \"\${SSH_PUBKEY:-}\" ]; then echo \"\${SSH_PUBKEY}\" > /root/.ssh/authorized_keys; fi; " +
+         "chmod 700 /root/.ssh; chmod 600 /root/.ssh/authorized_keys || true; " +
+         "sed -i 's/^#\?PasswordAuthentication .*/PasswordAuthentication no/' /etc/ssh/sshd_config || true; " +
+         "if grep -q '^PermitRootLogin' /etc/ssh/sshd_config; then sed -i 's/^PermitRootLogin .*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config; else echo 'PermitRootLogin prohibit-password' >> /etc/ssh/sshd_config; fi; " +
+         "/usr/sbin/sshd; " +
+         "python -m vllm.entrypoints.openai.api_server --model " + ($VllmModel) + " --port 8000 --max-model-len " + ($VllmMaxContext)
+        )
+      )
+    } else {
+      $dockerStartCmd = @('python','-m','vllm.entrypoints.openai.api_server','--model', $VllmModel,'--port','8000','--max-model-len',"$VllmMaxContext")
+    }
   }
   'open-webui' {
     $imageName = 'ghcr.io/open-webui/open-webui:main'
-    $ports = @('3000/http')
-    $dockerStartCmd = @()
-    $env = @{}
+    $ports += '3000/http'
+    if ($EnableSsh) {
+      Write-Warning "EnableSsh is not supported for open-webui preset; use RunPod web shell/IDE or vllm-openai preset."
+    }
   }
   default { throw "Unknown preset '$Preset'" }
 }
-
-$allowedCuda = @()
-if ($CudaVersions) { $allowedCuda = $CudaVersions.Split(',') | ForEach-Object { $_.Trim() } }
 
 $body = [ordered]@{
   cloudType = $CloudType
@@ -83,10 +109,8 @@ if ($dockerStartCmd.Count -gt 0) { $body['dockerStartCmd'] = $dockerStartCmd }
 if ($allowedCuda.Count -gt 0) { $body['allowedCudaVersions'] = $allowedCuda }
 
 if ([string]::IsNullOrWhiteSpace($NetworkVolumeId)) {
-  # Use local pod volume that persists while pod exists
   $body['volumeInGb'] = $VolumeInGb
 } else {
-  # Attach network volume that survives pod termination
   $body['networkVolumeId'] = $NetworkVolumeId
 }
 
