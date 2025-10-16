@@ -1,5 +1,5 @@
 param(
-  [Parameter(Mandatory=$true)][string]$RunpodApiKey,
+  [string]$RunpodApiKey,
   [string]$Preset = "vllm-openai", # or "open-webui"
   [string]$Name = "legal-vllm",
   [string]$GpuQuery = "H100",
@@ -17,6 +17,13 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+if (-not $RunpodApiKey -or [string]::IsNullOrWhiteSpace($RunpodApiKey)) {
+  $RunpodApiKey = $env:RUNPOD_API_KEY
+}
+if (-not $RunpodApiKey) {
+  throw "Missing RunPod API key. Pass -RunpodApiKey or set $env:RUNPOD_API_KEY."
+}
 
 function Invoke-RunpodGraphQL {
   param([string]$ApiKey,[string]$Query)
