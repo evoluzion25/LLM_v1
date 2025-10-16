@@ -25,10 +25,30 @@ Enable uninterrupted processing of massive legal documents and long-form draftin
 
 ## Repos & Scripts
 - `docs/ARCHITECTURE.md` — details, contracts, ports, security
+- `docs/STORAGE.md` — storage layers and how to persist data across pods
+- `docs/SSH.md` — SSH key setup and connecting to pods
 - `scripts/runpod-create-pod.ps1` — create a RunPod GPU pod for vLLM or Open WebUI
-- `scripts/runpod.env.example` — env template for provisioning
+- `scripts/setup-ssh-env.ps1` — generate key and export RUNPOD_SSH_PUBKEY
+- `scripts/workflows/create-runpod-pod.yml` — Actions workflow template (move to `.github/workflows/` to enable)
 
-## Next
-- Add chunking/summarization pipeline patterns
-- Add optional Cloudflare Tunnel helper for stable private URLs
-- Add an OpenAI MCP package install snippet for Claude config
+## GitHub Actions (optional)
+- Add repository secret `RUNPOD_API_KEY` (you already added org/user-level secrets).
+- Move `scripts/workflows/create-runpod-pod.yml` to `.github/workflows/create-runpod-pod.yml`.
+- Trigger from the Actions tab and fill inputs (GPU, volume, SSH enable, etc.).
+
+## Safe secrets usage
+- Recognized secrets: `RUNPOD_API_KEY`, `RUNPOD_SSH_PUBKEY` (optional for SSH), `S3_API_KEY` (for future backups).
+- Never commit keys. Local scripts read `RUNPOD_API_KEY` and `RUNPOD_SSH_PUBKEY` from your environment.
+
+## Local provisioning (PowerShell)
+```powershell
+# vLLM API server (OpenAI-compatible)
+pwsh -File .\scripts\runpod-create-pod.ps1 -Preset vllm-openai -Name 'legal-vllm' -GpuQuery 'H100' -GpuCount 1 `
+  -VolumeInGb 100 -ContainerDiskInGb 50 -VllmModel 'mistralai/Mistral-7B-Instruct-v0.3' -VllmMaxContext 32768
+
+# Enable SSH and attach Network Volume
+pwsh -File .\scripts\runpod-create-pod.ps1 -Preset vllm-openai -Name 'legal-vllm' -GpuQuery 'H100' -GpuCount 1 `
+  -NetworkVolumeId 'agv6w2qcg7' -VolumeMountPath '/workspace' -EnableSsh
+```
+
+After creation, open the Pod in RunPod → Connect to access the browser UI/API (ports 8000 for vLLM, 3000 for Open WebUI).
