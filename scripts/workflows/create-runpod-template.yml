@@ -1,0 +1,50 @@
+name: Create RunPod Template
+
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: "Template name"
+        required: true
+        default: "Legal-vLLM-OpenAI"
+      preset:
+        description: "Preset (vllm-openai or open-webui)"
+        required: true
+        default: "vllm-openai"
+      containerDiskInGb:
+        description: "Container disk"
+        required: true
+        default: "50"
+      volumeInGb:
+        description: "Pod volume"
+        required: true
+        default: "100"
+      gpuCount:
+        description: "GPUs"
+        required: true
+        default: "1"
+      cudaVersions:
+        description: "CSV of CUDA versions"
+        required: true
+        default: "12.0,12.1"
+
+jobs:
+  create:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create Template
+        shell: pwsh
+        env:
+          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+        run: |
+          ./scripts/runpod-create-template.ps1 -Name '${{ inputs.name }}' -Preset '${{ inputs.preset }}' `
+            -ContainerDiskInGb ([int]'${{ inputs.containerDiskInGb }}') -VolumeInGb ([int]'${{ inputs.volumeInGb }}') `
+            -GpuCount ([int]'${{ inputs.gpuCount }}') -CudaVersions '${{ inputs.cudaVersions }}' | Tee-Object template.json
+
+      - name: Show result
+        shell: pwsh
+        run: |
+          Get-Content template.json | Write-Host
