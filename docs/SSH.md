@@ -8,13 +8,18 @@ You can enable SSH (key-only) on vLLM pods for direct shell access.
 ssh-keygen -t ed25519 -C "runpod-access" -f $HOME\.ssh\id_ed25519
 ```
 
+Tip: Or run the helper which sets RUNPOD_SSH_PUBKEY automatically:
+```powershell
+pwsh -File .\scripts\setup-ssh-env.ps1
+```
+
 ## Provision a pod with SSH enabled
 - Use the public key contents (id_ed25519.pub)
 - Either set an env var or pass as a parameter
 
 Environment variable method:
 ```powershell
-$env:RUNPID_SSH_PUBKEY = (Get-Content $HOME\.ssh\id_ed25519.pub -Raw)
+$env:RUNPOD_SSH_PUBKEY = (Get-Content $HOME\.ssh\id_ed25519.pub -Raw)
 ```
 
 Or pass directly:
