@@ -11,7 +11,9 @@ param(
   [string]$CudaVersions = "",
   [string]$VllmModel = "mistralai/Mistral-7B-Instruct-v0.3",
   [int]$VllmMaxContext = 32768,
-  [string]$HfToken = ""
+  [string]$HfToken = "",
+  [string]$NetworkVolumeId = "",
+  [string]$VolumeMountPath = "/workspace"
 )
 
 $ErrorActionPreference = 'Stop'
@@ -68,11 +70,18 @@ $body = [ordered]@{
   interruptible = [bool]$Interruptible
   name = $Name
   ports = $ports
-  volumeInGb = $VolumeInGb
-  volumeMountPath = '/workspace'
+  volumeMountPath = $VolumeMountPath
 }
 if ($dockerStartCmd.Count -gt 0) { $body['dockerStartCmd'] = $dockerStartCmd }
 if ($allowedCuda.Count -gt 0) { $body['allowedCudaVersions'] = $allowedCuda }
+
+if ([string]::IsNullOrWhiteSpace($NetworkVolumeId)) {
+  # Use local pod volume that persists while pod exists
+  $body['volumeInGb'] = $VolumeInGb
+} else {
+  # Attach network volume that survives pod termination
+  $body['networkVolumeId'] = $NetworkVolumeId
+}
 
 $headers = @{ Authorization = "Bearer $RunpodApiKey"; 'Content-Type'='application/json' }
 $resp = Invoke-RestMethod -Method Post -Uri 'https://rest.runpod.io/v1/pods' -Headers $headers -Body ($body | ConvertTo-Json -Depth 8)
