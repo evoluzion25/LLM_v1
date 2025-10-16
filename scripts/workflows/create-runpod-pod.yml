@@ -1,0 +1,90 @@
+name: Create RunPod Pod
+
+on:
+  workflow_dispatch:
+    inputs:
+      preset:
+        description: "Preset: vllm-openai or open-webui"
+        required: true
+        default: "vllm-openai"
+      name:
+        description: "Pod name"
+        required: true
+        default: "legal-vllm"
+      gpuQuery:
+        description: "GPU search (e.g., H100, 4090)"
+        required: true
+        default: "H100"
+      gpuCount:
+        description: "Number of GPUs"
+        required: true
+        default: "1"
+      volumeInGb:
+        description: "Local pod volume (ignored if networkVolumeId set)"
+        required: true
+        default: "100"
+      containerDiskInGb:
+        description: "Container disk"
+        required: true
+        default: "50"
+      cudaVersions:
+        description: "Optional CSV of allowed CUDA versions (e.g., 12.0,12.1)"
+        required: false
+        default: ""
+      vllmModel:
+        description: "Model when using vllm-openai"
+        required: true
+        default: "mistralai/Mistral-7B-Instruct-v0.3"
+      vllmMaxContext:
+        description: "Max context tokens for vLLM"
+        required: true
+        default: "32768"
+      networkVolumeId:
+        description: "Attach a Network Volume (optional)"
+        required: false
+        default: ""
+      volumeMountPath:
+        description: "Mount path for volume"
+        required: true
+        default: "/workspace"
+      enableSsh:
+        description: "Enable SSH on vLLM preset"
+        required: true
+        default: "true"
+
+jobs:
+  create:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create RunPod Pod
+        shell: pwsh
+        env:
+          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+          RUNPOD_SSH_PUBKEY: ${{ secrets.RUNPOD_SSH_PUBKEY }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $preset = '${{ inputs.preset }}'
+          $name = '${{ inputs.name }}'
+          $gpuQuery = '${{ inputs.gpuQuery }}'
+          $gpuCount = [int]'${{ inputs.gpuCount }}'
+          $volumeInGb = [int]'${{ inputs.volumeInGb }}'
+          $containerDiskInGb = [int]'${{ inputs.containerDiskInGb }}'
+          $cudaVersions = '${{ inputs.cudaVersions }}'
+          $vllmModel = '${{ inputs.vllmModel }}'
+          $vllmMaxContext = [int]'${{ inputs.vllmMaxContext }}'
+          $networkVolumeId = '${{ inputs.networkVolumeId }}'
+          $volumeMountPath = '${{ inputs.volumeMountPath }}'
+          $enableSsh = ('${{ inputs.enableSsh }}' -eq 'true')
+
+          ./scripts/runpod-create-pod.ps1 -Preset $preset -Name $name -GpuQuery $gpuQuery -GpuCount $gpuCount `
+            -VolumeInGb $volumeInGb -ContainerDiskInGb $containerDiskInGb -CudaVersions $cudaVersions `
+            -VllmModel $vllmModel -VllmMaxContext $vllmMaxContext -NetworkVolumeId $networkVolumeId -VolumeMountPath $volumeMountPath `
+            $(if($enableSsh){'-EnableSsh'}) | Tee-Object pod.json
+
+      - name: Show result
+        shell: pwsh
+        run: |
+          Get-Content pod.json | Write-Host
